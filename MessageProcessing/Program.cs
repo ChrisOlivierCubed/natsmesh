@@ -1,4 +1,4 @@
-﻿
+﻿using NATS.Client;
 
 namespace MessageProcessing;
 class Program
