@@ -1,4 +1,6 @@
-﻿namespace MessageProcessing;
+﻿
+
+namespace MessageProcessing;
 class Program
 {
     static void Main(string[] args)
