@@ -4,21 +4,35 @@ using System.Text;
 using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Producer;
 using Azure.Messaging.EventHubs.Consumer;
+using Azure.Identity;
+using ApplicationSettings;
 
 namespace MessageProcessing;
 class Program
 {
-  protected readonly IConfiguration _configuration;
   static async Task Main(string[] args)
   {
     int numOfEvents = 10;
 
+    IConfigurationRoot configuration = new ConfigurationBuilder()
+      .SetBasePath(Directory.GetCurrentDirectory())
+      .AddJsonFile("appsettings.json", false, true)
+      .AddEnvironmentVariables()
+      .Build();
+
+    var applicationSettings = new Settings();
+    configuration.GetSection("AppSettings").Bind(applicationSettings);
+
     // create a connection to the NATS server
     IConnection connection = new ConnectionFactory().CreateConnection();
-    
+
     // create eh producer and consumer
-    EventHubProducerClient eventHubProducerClient = new EventHubProducerClient("");
-    EventHubConsumerClient eventHubConsumerClient = new EventHubConsumerClient("natstest", "");
+    EventHubProducerClient eventHubProducerClient = 
+      new EventHubProducerClient(applicationSettings.ProducerEventHubDetails.ConnectionString
+        ,applicationSettings.ProducerEventHubDetails.EventHub);
+    EventHubConsumerClient eventHubConsumerClient = new EventHubConsumerClient(applicationSettings.ConsumerEventHubDetails.ConsumerGroup
+        ,applicationSettings.ConsumerEventHubDetails.ConnectionString
+        ,applicationSettings.ConsumerEventHubDetails.EventHub);
     // set read event hub options
     ReadEventOptions options = new ReadEventOptions { MaximumWaitTime = TimeSpan.FromSeconds(5) };
 
