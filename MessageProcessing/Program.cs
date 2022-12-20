@@ -4,8 +4,10 @@ using System.Text;
 using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Producer;
 using Azure.Messaging.EventHubs.Consumer;
+using Azure.Messaging.EventHubs.Processor;
 using Azure.Identity;
 using ApplicationSettings;
+using Azure.Storage.Blobs;
 
 namespace MessageProcessing;
 class Program
@@ -27,22 +29,58 @@ class Program
     IConnection connection = new ConnectionFactory().CreateConnection();
 
     // create eh producer and consumer
-    EventHubProducerClient eventHubProducerClient = 
-      new EventHubProducerClient(applicationSettings.ProducerEventHubDetails.ConnectionString
-        ,applicationSettings.ProducerEventHubDetails.EventHub);
-    EventHubConsumerClient eventHubConsumerClient = new EventHubConsumerClient(applicationSettings.ConsumerEventHubDetails.ConsumerGroup
-        ,applicationSettings.ConsumerEventHubDetails.ConnectionString
-        ,applicationSettings.ConsumerEventHubDetails.EventHub);
+    EventHubProducerClient eventHubProducerClient =
+      new EventHubProducerClient(applicationSettings.ProducerDetails.ConnectionString
+        , applicationSettings.ProducerDetails.EventHub);
+    EventHubConsumerClient eventHubConsumerClient = new EventHubConsumerClient(applicationSettings.ConsumerDetails.ConsumerGroup
+        , applicationSettings.ConsumerDetails.ConnectionString
+        , applicationSettings.ConsumerDetails.EventHub);
     // set read event hub options
     ReadEventOptions options = new ReadEventOptions { MaximumWaitTime = TimeSpan.FromSeconds(5) };
 
     // Send messages to event hub
     await SendMessages(eventHubProducerClient, numOfEvents);
 
-    // Read from event Hub and send to nats
-    await foreach (PartitionEvent partitionEvent in eventHubConsumerClient.ReadEventsAsync(options))
+    // Set storage account for consumer
+
+    BlobContainerClient storageClient = new BlobContainerClient(
+        new Uri($"https://{applicationSettings.ConsumerDetails.BlobStorageAccount}.blob.core.windows.net/{applicationSettings.ConsumerDetails.BlobContainer}"), new DefaultAzureCredential());
+
+    var processor = new EventProcessorClient(
+    storageClient,
+    applicationSettings.ConsumerDetails.ConsumerGroup,
+    applicationSettings.ConsumerDetails.EventHubNamespace,
+    applicationSettings.ConsumerDetails.EventHub,
+    new DefaultAzureCredential());
+
+    // Register handlers for processing events and handling errors
+    processor.ProcessEventAsync += ProcessEventHandler;
+    processor.ProcessErrorAsync += ProcessErrorHandler;
+
+    // Start the processing
+    await processor.StartProcessingAsync();
+
+    // Wait for 30 seconds for the events to be processed
+    await Task.Delay(TimeSpan.FromSeconds(30));
+
+    // Stop the processing
+    await processor.StopProcessingAsync();
+
+    async Task ProcessEventHandler(ProcessEventArgs eventArgs)
     {
-      connection.Publish("clientInteractions", partitionEvent.Data.EventBody.ToArray());
+      // Publish the event to NATS
+      connection.Publish("clientInteractions", eventArgs.Data.EventBody.ToArray());
+
+      // Update checkpoint in the blob storage so that the app receives only new events the next time it's run
+      await eventArgs.UpdateCheckpointAsync(eventArgs.CancellationToken);
+    }
+
+    Task ProcessErrorHandler(ProcessErrorEventArgs eventArgs)
+    {
+      // Write details about the error to the console window
+      Console.WriteLine($"\tPartition '{eventArgs.PartitionId}': an unhandled exception was encountered. This was not expected to happen.");
+      Console.WriteLine(eventArgs.Exception.Message);
+      return Task.CompletedTask;
     }
 
     connection.Close();
