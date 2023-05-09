@@ -15,6 +15,7 @@ class Program
   static async Task Main(string[] args)
   {
     int numOfEvents = 10;
+    var someTestVar = 4;
 
     IConfigurationRoot configuration = new ConfigurationBuilder()
       .SetBasePath(Directory.GetCurrentDirectory())
@@ -26,7 +27,7 @@ class Program
     configuration.GetSection("AppSettings").Bind(applicationSettings);
 
     // create a connection to the NATS server
-    IConnection connection = new ConnectionFactory().CreateConnection();
+    IConnection connection = new ConnectionFactory().CreateConnection(applicationSettings.NatsQueueDetails.Url);
 
     // create eh producer and consumer
     EventHubProducerClient eventHubProducerClient =

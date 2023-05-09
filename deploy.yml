@@ -29,4 +29,37 @@ spec:
     - protocol: TCP
       port: 4222
       targetPort: 4222
-
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: nats-gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 4222
+      name: nats-service
+      protocol: TCP
+    hosts:
+    - "*"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: nats-virtual-service
+  namespace: istio-system
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - nats-gateway
+  tcp:
+  - match:
+    - port: 4222
+    route:
+    - destination:
+        host: nats-service
+        port:
+          number: 4222
